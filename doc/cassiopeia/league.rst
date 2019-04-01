@@ -1,3 +1,6 @@
+.. _Leagues:
+
+
 Leagues
 =======
 
@@ -8,12 +11,16 @@ Leagues
 
 .. automethod:: cassiopeia.get_leagues
 
+.. automethod:: cassiopeia.get_league_positions
+
+.. automethod:: cassiopeia.get_positional_leagues
+
 .. automethod:: cassiopeia.get_challenger_league
 
 .. automethod:: cassiopeia.get_master_league
 
 
-.. autoclass:: cassiopeia.core.league.Leagues
+.. autoclass:: cassiopeia.core.league.SummonerLeagues
     :members:
     :undoc-members:
     :show-inheritance:
@@ -26,16 +33,23 @@ Leagues
     :show-inheritance:
 
 
-.. autoclass:: ChallengerLeague
+.. autoclass:: cassiopeia.core.ChallengerLeague
     :members:
     :undoc-members:
     :show-inheritance:
 
 
-.. autoclass:: MasterLeague
+.. autoclass:: cassiopeia.core.MasterLeague
     :members:
     :undoc-members:
     :show-inheritance:
+
+
+.. autoclass:: cassiopeia.core.league.PositionalLeagues
+    :members:
+    :undoc-members:
+    :show-inheritance:
+    :inherited-members:
 
 
 .. autoclass:: cassiopeia.core.league.MiniSeries

@@ -257,8 +257,8 @@ class Gold(CassiopeiaObject):
         return self._data[GoldData].base
 
     @property
-    def purchaseable(self) -> bool:
-        return self._data[GoldData].purchaseable
+    def purchasable(self) -> bool:
+        return self._data[GoldData].purchasable
 
 
 @searchable({str: ["name", "region", "platform", "locale", "keywords", "maps", "tags", "tier"], int: ["id"], Region: ["region"], Platform: ["platform"], Map: ["maps"]})
@@ -301,6 +301,16 @@ class Item(CassiopeiaGhost):
             return True
         else:
             return self.id == other.id
+
+    def __str__(self):
+        region = self.region
+        id_ = "?"
+        name = "?"
+        if hasattr(self._data[ItemData], "id"):
+            id_ = self.id
+        if hasattr(self._data[ItemData], "name"):
+            name = self.name
+        return "Item(name='{name}', id={id_}, region='{region}')".format(name=name, id_=id_, region=region.value)
 
     __hash__ = CassiopeiaGhost.__hash__
 

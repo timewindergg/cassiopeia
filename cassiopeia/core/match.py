@@ -1,13 +1,14 @@
 import functools
 import arrow
 import datetime
+from collections import Counter
 from typing import List, Dict, Set, Union, Generator
 
 from merakicommons.cache import lazy, lazy_property
 from merakicommons.container import searchable, SearchableList, SearchableLazyList, SearchableDictionary
 
 from .. import configuration
-from ..data import Region, Platform, Tier, GameType, GameMode, Queue, Side, Season, Lane, Role, Key
+from ..data import Region, Platform, Tier, GameType, GameMode, Queue, Side, Season, Lane, Role, Key, SummonersRiftArea, Tower
 from .common import CoreData, CoreDataList, CassiopeiaObject, CassiopeiaGhost, CassiopeiaLazyList, provide_default_region, ghost_load_on
 from ..dto import match as dto
 from .patch import Patch
@@ -50,7 +51,7 @@ def load_match_on_attributeerror(method):
 def _choose_staticdata_version(match):
     # If we want to pull the data for the correct version, we need to pull the entire match data.
     # However, we can use the creation date (which comes with a matchref) and get the ~ patch and therefore extract the version from the patch.
-    if configuration.settings.version_from_match == "latest":
+    if configuration.settings.version_from_match is None or configuration.settings.version_from_match == "latest":
         version = None  # Rather than pick the latest version here, let the obj handle it so it knows which endpoint within the realms data to use
     elif configuration.settings.version_from_match == "version" or hasattr(match._data[MatchData], "version"):
         version = match.version
@@ -88,7 +89,7 @@ class EventData(CoreData):
 
 
 class ParticipantFrameData(CoreData):
-    _renamed = {"totalGold": "goldEarned", "minionsKilled": "creepScore", "xp": "experience", "jungleMinionsKilled": "NeutralMinionsKilled"}
+    _renamed = {"totalGold": "goldEarned", "minionsKilled": "creepScore", "xp": "experience", "jungleMinionsKilled": "neutralMinionsKilled"}
 
     def __call__(self, **kwargs):
         if "position" in kwargs:
@@ -199,7 +200,7 @@ class MatchReferenceData(CoreData):
 
 class MatchData(CoreData):
     _dto_type = dto.MatchDto
-    _renamed = {"gameId": "id", "gameVersion": "version", "gameMode": "mode", "gameType": "type"}
+    _renamed = {"gameId": "id", "gameVersion": "version", "gameMode": "mode", "gameType": "type", "queueId": "queue", "seasonId": "season"}
 
     def __call__(self, **kwargs):
         if "gameCreation" in kwargs:
@@ -208,18 +209,19 @@ class MatchData(CoreData):
             self.duration = datetime.timedelta(seconds=kwargs["gameDuration"])
 
         if "participants" in kwargs:
+            good_participant_ids = []
             for participant in kwargs["participants"]:
                 for pid in kwargs["participantIdentities"]:
                     if participant["participantId"] == pid["participantId"] and "player" in pid:
+                        good_participant_ids.append(participant["participantId"])
                         participant["player"] =  pid["player"]
                         break
+            # For each participant id we found that has both a participant and an identity, add it to the match data's participants
             self.participants = []
-            for i in range(len(kwargs["participants"])):
-                for participant in kwargs["participants"]:
-                    if i == participant["participantId"] - 1:
-                        participant = ParticipantData(**participant)
-                        self.participants.append(participant)
-                        break
+            for participant in kwargs["participants"]:
+                if participant["participantId"] in good_participant_ids:
+                    participant = ParticipantData(**participant)
+                    self.participants.append(participant)
             assert len(self.participants) == len(kwargs["participants"])
             kwargs.pop("participants")
             kwargs.pop("participantIdentities")
@@ -243,7 +245,7 @@ class MatchData(CoreData):
 ##############
 
 
-class MatchHistory(CassiopeiaLazyList):
+class MatchHistory(CassiopeiaLazyList):  # type: List[Match]
     """The match history for a summoner. By default, this will return the entire match history."""
     _data_types = {MatchListData}
 
@@ -265,7 +267,7 @@ class MatchHistory(CassiopeiaLazyList):
             end_time = end_time.timestamp * 1000
         kwargs["end_time"] = end_time
         assert isinstance(summoner, Summoner)
-        self.__account_id_callable = lambda: summoner.account.id
+        self.__account_id_callable = lambda: summoner.account_id
         self.__summoner = summoner
         CassiopeiaObject.__init__(self, **kwargs)
 
@@ -273,7 +275,7 @@ class MatchHistory(CassiopeiaLazyList):
     def __get_query_from_kwargs__(cls, *, summoner: Summoner, begin_index: int = None, end_index: int = None, begin_time: arrow.Arrow = None, end_time: arrow.Arrow = None, queues: Set[Queue] = None, seasons: Set[Season] = None, champions: Set[Champion] = None):
         assert isinstance(summoner, Summoner)
         query = {"region": summoner.region}
-        query["account.id"] = summoner.account.id
+        query["accountId"] = summoner.account_id
 
         if begin_index is not None:
             query["beginIndex"] = begin_index
@@ -393,18 +395,18 @@ class Position(CassiopeiaObject):
     def y(self) -> int:
         return self._data[PositionData].y
 
+    @property
+    def location(self) -> SummonersRiftArea:
+        return SummonersRiftArea.from_position(self)
+
 
 @searchable({str: ["type", "tower_type", "ascended_type", "ward_type", "monster_type", "type", "monster_sub_type", "lane_type", "building_type"]})
 class Event(CassiopeiaObject):
     _data_types = {EventData}
 
     @property
-    def type(self) -> str:
-        return self._data[EventData].type
-
-    @property
-    def tower_type(self) -> str:
-        return self._data[EventData].towerType
+    def tower_type(self) -> Tower:
+        return Tower(self._data[EventData].towerType)
 
     @property
     def team_id(self) -> int:
@@ -452,8 +454,8 @@ class Event(CassiopeiaObject):
         return self._data[EventData].victimId
 
     @property
-    def timestamp(self) -> int:
-        return self._data[EventData].timestamp
+    def timestamp(self) -> datetime.timedelta:
+        return datetime.timedelta(seconds=self._data[EventData].timestamp/1000)
 
     @property
     def after_id(self) -> int:
@@ -461,11 +463,11 @@ class Event(CassiopeiaObject):
 
     @property
     def monster_sub_type(self) -> str:
-        return self._data[EventData].monster_sub_type
+        return self._data[EventData].monsterSubType
 
     @property
     def lane_type(self) -> str:
-        return self._data[EventData].lane_type
+        return self._data[EventData].laneType
 
     @property
     def item_id(self) -> int:
@@ -540,8 +542,8 @@ class Frame(CassiopeiaObject):
     _data_types = {FrameData}
 
     @property
-    def timestamp(self) -> int:
-        return self._data[FrameData].timestamp
+    def timestamp(self) -> datetime.timedelta:
+        return datetime.timedelta(seconds=self._data[FrameData].timestamp/1000)
 
     @property
     def participant_frames(self) -> Dict[int, ParticipantFrame]:
@@ -585,6 +587,13 @@ class Timeline(CassiopeiaGhost):
     def frame_interval(self) -> int:
         return self._data[TimelineData].frame_interval
 
+    @property
+    def first_tower_fallen(self) -> Event:
+        for frame in self.frames:
+            for event in frame.events:
+                if event.type == "BUILDING_KILL" and event.building_type == "TOWER_BUILDING":
+                    return event
+
 
 class ParticipantTimeline(CassiopeiaObject):
     _data_types = {ParticipantTimelineData}
@@ -600,6 +609,7 @@ class ParticipantTimeline(CassiopeiaObject):
         these = []
         for frame in self.__match.timeline.frames:
             for pid, pframe in frame.participant_frames.items():
+                pframe.timestamp = frame.timestamp
                 if pid == self.id:
                     these.append(pframe)
         return these
@@ -650,21 +660,12 @@ class ParticipantTimeline(CassiopeiaObject):
         return self.events.filter(lambda event: event.type == "CHAMPION_KILL" and self.id in event.assisting_participants)
 
     @property
-    def lane(self) -> str:
+    def lane(self) -> Lane:
         return Lane.from_match_naming_scheme(self._data[ParticipantTimelineData].lane)
 
     @property
-    def role(self) -> Union[str, Role]:
-        role = self._data[ParticipantTimelineData].role
-        if role == "NONE":
-            role = None
-        elif role == "SOLO":
-            role = "SOLO"
-        elif role == "DUO":
-            role = "DUO"
-        else:
-            role = Role.from_match_naming_scheme(role)
-        return role
+    def role(self) -> Role:
+        return Role.from_match_naming_scheme(self._data[ParticipantTimelineData].role)
 
     @property
     def id(self) -> int:
@@ -699,6 +700,206 @@ class ParticipantTimeline(CassiopeiaObject):
         return self._data[ParticipantTimelineData].damageTakenDiffPerMinDeltas
 
 
+class CumulativeTimeline:
+    def __init__(self, id: int, participant_timeline: ParticipantTimeline):
+        self._id = id
+        self._timeline = participant_timeline
+
+    def __getitem__(self, time: Union[datetime.timedelta, str]) -> "ParticipantState":
+        if isinstance(time, str):
+            time = time.split(":")
+            time = datetime.timedelta(minutes=int(time[0]), seconds=int(time[1]))
+        state = ParticipantState(id=self._id, time=time, participant_timeline=self._timeline)
+        for event in self._timeline.events:
+            if event.timestamp > time:
+                break
+            state._process_event(event)
+        return state
+
+
+class ParticipantState:
+    """The state of a participant at a given point in the timeline."""
+    def __init__(self, id: int, time: datetime.timedelta, participant_timeline: ParticipantTimeline):
+        self._id = id
+        self._time = time
+        #self._timeline = participant_timeline
+        # Try to get info from the most recent participant timeline object
+        latest_frame = None
+        for frame in participant_timeline.frames:
+            # Round to the nearest second for the frame timestamp because it's off by a few ms
+            rounded_frame_timestamp = datetime.timedelta(seconds=frame.timestamp.seconds)
+            if rounded_frame_timestamp > self._time:
+                break
+            latest_frame = frame
+        self._latest_frame = latest_frame
+        self._item_state = _ItemState()
+        self._skills = Counter()
+        self._kills = 0
+        self._deaths = 0
+        self._assists = 0
+        self._objectives = 0
+        self._level = 1
+        self._processed_events = []
+
+    def _process_event(self, event: Event):
+        if "ITEM" in event.type:
+            self._item_state.process_event(event)
+        elif "CHAMPION_KILL" == event.type:
+            if event.killer_id == self._id:
+                self._kills += 1
+            elif event.victim_id == self._id:
+                self._deaths += 1
+            else:
+                assert self._id in event.assisting_participants
+                self._assists += 1
+        elif "SKILL_LEVEL_UP" == event.type:
+            if event.level_up_type == "NORMAL":
+                self._skills[event.skill] += 1
+                self._level += 1
+        elif event.type in ("WARD_PLACED", "WARD_KILL"):
+            return
+        elif event.type in ("ELITE_MONSTER_KILL", "BUILDING_KILL"):
+            self._objectives += 1
+        else:
+            #print(f"Did not process event {event.to_dict()}")
+            pass
+        self._processed_events.append(event)
+
+    @property
+    def items(self) -> SearchableList:
+        return SearchableList([Item(id=id_, region="NA") for id_ in self._item_state._items])
+
+    @property
+    def skills(self) -> Dict[Key, int]:
+        skill_keys = {1: Key.Q, 2: Key.W, 3: Key.E, 4: Key.R}
+        skills = {skill_keys[skill]: level for skill, level in self._skills.items()}
+        return skills
+
+    @property
+    def kills(self) -> int:
+        return self._kills
+
+    @property
+    def deaths(self) -> int:
+        return self._deaths
+
+    @property
+    def assists(self) -> int:
+        return self._assists
+
+    @property
+    def kda(self) -> float:
+        return (self.kills + self.assists) / (self.deaths or 1)
+
+    @property
+    def objectives(self) -> int:
+        """Number of objectives assisted in."""
+        return self._objectives
+
+    @property
+    def level(self) -> int:
+        return self._level
+
+    @property
+    def gold_earned(self) -> int:
+        return self._latest_frame.gold_earned
+
+    @property
+    def team_score(self) -> int:
+        return self._latest_frame.team_score
+
+    @property
+    def current_gold(self) -> int:
+        return self._latest_frame.current_gold
+
+    @property
+    def creep_score(self) -> int:
+        return self._latest_frame.creep_score
+
+    @property
+    def dominion_score(self) -> int:
+        return self._latest_frame.dominion_score
+
+    @property
+    def position(self) -> Position:
+        # The latest position is either from the latest event or from the participant timeline frame
+        latest_frame_ts = self._latest_frame.timestamp
+        latest_event_with_ts = [(getattr(event, 'timestamp', None), getattr(event, 'position', None)) for event in self._processed_events]
+        latest_event_with_ts = [(ts, p) for ts, p in latest_event_with_ts if ts is not None and p is not None]
+        latest_event_ts = sorted(latest_event_with_ts)[-1]
+        if latest_frame_ts > latest_event_ts[0]:
+            return self._latest_frame.position
+        else:
+            return latest_event_ts[1]
+
+    @property
+    def experience(self) -> int:
+        return self._latest_frame.experience
+
+    @property
+    def neutral_minions_killed(self) -> int:
+        return self._latest_frame.neutral_minions_killed
+
+
+class _ItemState:
+    def __init__(self, *args):
+        self._items = []
+        self._events = []
+
+    def __str__(self):
+        return str(self._items)
+
+    def process_event(self, event):
+        items_to_ignore = (2010, 3599, 3520, 3513, 2422)
+        # 2422 is Slightly Magical Boots... I could figure out how to add those and Biscuits to the inventory based on runes but it would be manual...
+        item_id = getattr(event, 'item_id', getattr(event, 'before_id', None))
+        assert item_id is not None
+        if item_id in items_to_ignore:
+            return
+        if event.type == "ITEM_PURCHASED":
+            self.add(event.item_id)
+            self._events.append(event)
+        elif event.type == "ITEM_DESTROYED":
+            self.destroy(event.item_id)
+            self._events.append(event)
+        elif event.type == "ITEM_SOLD":
+            self.destroy(event.item_id)
+            self._events.append(event)
+        elif event.type == "ITEM_UNDO":
+            self.undo(event)
+        else:
+            raise ValueError(f"Unexpected event type {event.type}")
+
+    def add(self, item: int):
+        self._items.append(item)
+
+    def destroy(self, item: int):
+        self._items.reverse()
+        try:
+            self._items.remove(item)
+        except ValueError as error:
+            if item in (3340, 3364, 2319, 2061, 2062, 2056, 2403, 2419, 3400, 2004, 2058, 3200, 2011, 2423, 2055, 2057, 2424, 2059, 2060, 2013, 2421, 3600):  # Something weird can happen with trinkets and klepto items
+                pass
+            else:
+                raise error
+        self._items.reverse()
+
+    def undo(self, event: Event):
+        assert event.after_id == 0 or event.before_id == 0
+        item_id = event.before_id or event.after_id
+        prev = None
+        while prev is None or prev.item_id != item_id:
+            prev = self._events.pop()
+            if prev.type == "ITEM_PURCHASED":
+                self.destroy(prev.item_id)
+            elif prev.type == "ITEM_DESTROYED":
+                self.add(prev.item_id)
+            elif prev.type == "ITEM_SOLD":
+                self.add(prev.item_id)
+            else:
+                raise TypeError(f"Unexpected event type {prev.type}")
+
+
 @searchable({str: ["items"], Item: ["items"]})
 class ParticipantStats(CassiopeiaObject):
     _data_types = {ParticipantStatsData}
@@ -713,10 +914,7 @@ class ParticipantStats(CassiopeiaObject):
     @property
     @load_match_on_attributeerror
     def kda(self) -> float:
-        try:
-            return (self.kills + self.assists) / self.deaths
-        except ZeroDivisionError:
-            return self.kills + self.assists
+        return (self.kills + self.assists) / (self.deaths or 1)
 
     @property
     @load_match_on_attributeerror
@@ -1050,7 +1248,7 @@ class ParticipantStats(CassiopeiaObject):
     @property
     @load_match_on_attributeerror
     def time_CCing_others(self) -> int:
-        return self._data[ParticipantStatsData].time_CCingOthers
+        return self._data[ParticipantStatsData].timeCCingOthers
 
     @property
     @load_match_on_attributeerror
@@ -1076,15 +1274,15 @@ class Participant(CassiopeiaObject):
         return version
 
     @property
-    def lane(self):
-        return self.timeline.lane
+    def lane(self) -> Lane:
+        return Lane.from_match_naming_scheme(self._data[ParticipantData].timeline.lane)
 
     @property
-    def role(self):
-        return self.timeline.role
+    def role(self) -> Role:
+        return Role.from_match_naming_scheme(self._data[ParticipantData].timeline.role)
 
     @property
-    def skill_order(self):
+    def skill_order(self) -> List[Key]:
         skill_events = self.timeline.events.filter(lambda event: event.type == "SKILL_LEVEL_UP")
         skill_events.sort(key=lambda event: event.timestamp)
         skills = [event.skill - 1 for event in skill_events]
@@ -1097,8 +1295,11 @@ class Participant(CassiopeiaObject):
     def stats(self) -> ParticipantStats:
         return ParticipantStats.from_data(self._data[ParticipantData].stats, match=self.__match, participant=self)
 
-    @property
+    @lazy_property
+    @load_match_on_attributeerror
     def id(self) -> int:
+        if self._data[ParticipantData].id is None:
+            raise AttributeError
         return self._data[ParticipantData].id
 
     @lazy_property
@@ -1108,10 +1309,20 @@ class Participant(CassiopeiaObject):
 
     @lazy_property
     @load_match_on_attributeerror
-    def runes(self) -> Dict["Rune", int]:
+    def runes(self) -> Dict[Rune, int]:
         version = _choose_staticdata_version(self.__match)
-        return SearchableDictionary({Rune(id=rune_id, version=version, region=self.__match.region): perk_vars
+        runes = SearchableDictionary({Rune(id=rune_id, version=version, region=self.__match.region): perk_vars
             for rune_id, perk_vars in self._data[ParticipantData].runes.items()})
+
+        def keystone(self):
+            for rune in self:
+                if rune.is_keystone:
+                    return rune
+        # The bad thing about calling this here is that the runes won't be lazy loaded, so if the user only want the
+        #  rune ids then there will be a needless call. That said, it's pretty nice functionality to have and without
+        #  making a custom RunePage class, I believe this is the only option.
+        runes.keystone = keystone(runes)
+        return runes
 
     @lazy_property
     @load_match_on_attributeerror
@@ -1119,6 +1330,10 @@ class Participant(CassiopeiaObject):
         timeline = ParticipantTimeline.from_data(self._data[ParticipantData].timeline, match=self.__match)
         timeline(id=self.id)
         return timeline
+
+    @property
+    def cumulative_timeline(self) -> CumulativeTimeline:
+        return CumulativeTimeline(id=self.id, participant_timeline=self.timeline)
 
     @lazy_property
     @load_match_on_attributeerror
@@ -1142,6 +1357,11 @@ class Participant(CassiopeiaObject):
     def rank_last_season(self) -> Tier:
         return Tier(self._data[ParticipantData].rankLastSeason)
 
+    @property
+    @load_match_on_attributeerror
+    def match_history_uri(self) -> str:
+        return self._data[ParticipantData].matchHistoryUri
+
     @lazy_property
     @load_match_on_attributeerror
     def champion(self) -> "Champion":
@@ -1163,7 +1383,7 @@ class Participant(CassiopeiaObject):
             kwargs["name"] = self._data[ParticipantData].summonerName
         except AttributeError:
             pass
-        kwargs["account"] = self._data[ParticipantData].accountId
+        kwargs["account_id"] = self._data[ParticipantData].currentAccountId
         kwargs["region"] = Platform(self._data[ParticipantData].currentPlatformId).region
         summoner = Summoner(**kwargs)
         try:
@@ -1187,7 +1407,7 @@ class Participant(CassiopeiaObject):
             return self.__match.blue_team
 
 
-@searchable({str: ["participants"], bool: ["win"]})
+@searchable({str: ["participants"], bool: ["win"], Champion: ["participants"], Summoner: ["participants"], SummonerSpell: ["participants"]})
 class Team(CassiopeiaObject):
     _data_types = {TeamData}
 
@@ -1223,7 +1443,8 @@ class Team(CassiopeiaObject):
 
     @property
     def bans(self) -> List["Champion"]:
-        return [Champion(id=champion_id, version=self.__match.version, region=self.__match.region) if champion_id != -1 else None for champion_id in self._data[TeamData].bans]
+        version = _choose_staticdata_version(self.__match)
+        return [Champion(id=champion_id, version=version, region=self.__match.region) if champion_id != -1 else None for champion_id in self._data[TeamData].bans]
 
     @property
     def baron_kills(self) -> int:
@@ -1266,7 +1487,7 @@ class Team(CassiopeiaObject):
         return SearchableList([Participant.from_data(p, match=self.__match) for p in self._data[TeamData].participants])
 
 
-@searchable({str: ["participants", "region", "platform", "season", "queue", "mode", "map", "type"], Region: ["region"], Platform: ["platform"], Season: ["season"], Queue: ["queue"], GameMode: ["mode"], Map: ["map"], GameType: ["type"], Item: ["participants"], Champion: ["participants"], Patch: ["patch"]})
+@searchable({str: ["participants", "region", "platform", "season", "queue", "mode", "map", "type"], Region: ["region"], Platform: ["platform"], Season: ["season"], Queue: ["queue"], GameMode: ["mode"], Map: ["map"], GameType: ["type"], Item: ["participants"], Champion: ["participants"], Patch: ["patch"], Summoner: ["participants"], SummonerSpell: ["participants"]})
 class Match(CassiopeiaGhost):
     _data_types = {MatchData}
 
@@ -1285,17 +1506,22 @@ class Match(CassiopeiaGhost):
         # The below line is necessary because it's possible to pull this match from the cache (which has Match core objects in it).
         # In that case, the data will already be loaded and we don't want to overwrite anything.
         if not hasattr(instance._data[MatchData], "participants"):
-            participant = {"participantId": 1, "championId": ref.championId, "stats": {"lane": ref.lane, "role": ref.role}}
-            player = {"participantId": 1, "accountId": ref.accountId, "currentPlatformId": ref.platform}
+            participant = {"participantId": None, "championId": ref.championId, "timeline": {"lane": ref.lane, "role": ref.role}}
+            player = {"participantId": None, "currentAccountId": ref.accountId, "currentPlatformId": ref.platform}
             instance(season=ref.season, queue=ref.queue, creation=ref.creation)
             instance._data[MatchData](participants=[participant],
-                                      participantIdentities=[{"participantId": 1, "player": player, "bot": False}])
+                                      participantIdentities=[{"participantId": None, "player": player, "bot": False}])
         return instance
 
     def __eq__(self, other: "Match"):
         if not isinstance(other, Match) or self.region != other.region:
             return False
         return self.id == other.id
+
+    def __str__(self):
+        region = self.region
+        id_ = self.id
+        return "Match(id={id_}, region='{region}')".format(id_=id_, region=region.value)
 
     __hash__ = CassiopeiaGhost.__hash__
 
@@ -1321,13 +1547,13 @@ class Match(CassiopeiaGhost):
     @ghost_load_on
     @lazy
     def season(self) -> Season:
-        return Season.from_id(self._data[MatchData].seasonId)
+        return Season.from_id(self._data[MatchData].season)
 
     @CassiopeiaGhost.property(MatchData)
     @ghost_load_on
     @lazy
     def queue(self) -> Queue:
-        return Queue.from_id(self._data[MatchData].queueId)
+        return Queue.from_id(self._data[MatchData].queue)
 
     @CassiopeiaGhost.property(MatchData)
     @ghost_load_on
@@ -1363,7 +1589,7 @@ class Match(CassiopeiaGhost):
                     participant = Participant.from_data(p, match=match)
                     # If we already have this participant in the list, replace it so it stays in the same position
                     for j, pold in enumerate(match.__participants):
-                        if hasattr(pold._data[ParticipantData], "accountId") and hasattr(participant._data[ParticipantData], "accountId") and pold._data[ParticipantData].accountId == participant._data[ParticipantData].currentAccountId:
+                        if hasattr(pold._data[ParticipantData], "currentAccountId") and hasattr(participant._data[ParticipantData], "currentAccountId") and pold._data[ParticipantData].currentAccountId == participant._data[ParticipantData].currentAccountId:
                             match.__participants[j] = participant
                             break
                     else:
@@ -1402,8 +1628,12 @@ class Match(CassiopeiaGhost):
 
     @property
     def patch(self) -> Patch:
-        version = ".".join(self.version.split(".")[:2])
-        patch = Patch.from_str(version, region=self.region)
+        if hasattr(self._data[MatchData], "version"):
+            version = ".".join(self.version.split(".")[:2])
+            patch = Patch.from_str(version, region=self.region)
+        else:
+            date = self.creation
+            patch = Patch.from_date(date, region=self.region)
         return patch
 
     @CassiopeiaGhost.property(MatchData)

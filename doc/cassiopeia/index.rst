@@ -41,8 +41,8 @@ See the links below for the method and class names for each type.
     league.rst
     locale.rst
     map.rst
-    mastery.rst
     match.rst
+    patch.rst
     profileicon.rst
     realms.rst
     rune.rst

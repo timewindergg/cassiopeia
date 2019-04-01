@@ -1,3 +1,6 @@
+.. _Data_and_Enums:
+
+
 Data and Enums
 ==============
 
@@ -6,12 +9,6 @@ These data are available as enums (constants) and can be used to interact with m
 .. currentmodule:: cassiopeia
 
 .. automodule:: cassiopeia.data
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-
-.. automodule:: cassiopeia.patches
     :members:
     :undoc-members:
     :show-inheritance:

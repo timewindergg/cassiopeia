@@ -1,5 +1,8 @@
+.. _Runes:
+
+
 Runes
-====
+=====
 
 .. py:currentmodule:: cassiopeia
 

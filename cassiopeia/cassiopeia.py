@@ -2,8 +2,8 @@ from typing import List, Set, Dict, Union, TextIO
 import arrow
 import datetime
 
-from .data import Region, Queue, Season
-from .core import Champion, Summoner, Account, ChampionMastery, Rune, Item, Match, Map, SummonerSpell, Realms, ProfileIcon, LanguageStrings, CurrentMatch, ShardStatus, Versions, MatchHistory, Champions, ChampionMasteries, Runes, Items, SummonerSpells, Maps, FeaturedMatches, Locales, ProfileIcons, ChallengerLeague, MasterLeague, SummonerLeagues, LeagueEntries, Patch, VerificationString
+from .data import Region, Queue, Season, Tier, Division, Position
+from .core import Champion, Summoner, ChampionMastery, Rune, Item, Match, Map, SummonerSpell, Realms, ProfileIcon, LanguageStrings, CurrentMatch, ShardStatus, Versions, MatchHistory, Champions, ChampionMasteries, Runes, Items, SummonerSpells, Maps, FeaturedMatches, Locales, ProfileIcons, ChallengerLeague, GrandmasterLeague, MasterLeague, SummonerLeagues, LeagueEntries, Patch, VerificationString, ChampionRotation, PositionalLeagues, PositionalQueues
 from .datastores import common as _common_datastore
 from ._configuration import Settings, load_config, get_default_config
 from . import configuration
@@ -29,6 +29,9 @@ def apply_settings(config: Union[str, TextIO, Dict, Settings]):
     # Overwrite the old settings
     configuration._settings = settings
 
+    # Initialize the pipeline immediately
+    _ = configuration.settings.pipeline
+
 
 def set_riot_api_key(key: str):
     configuration.settings.set_riot_api_key(key)
@@ -53,9 +56,18 @@ def get_leagues(summoner: Summoner, region: Union[Region, str] = None) -> Summon
     return summoner.leagues
 
 
+def get_positional_queues(region: Union[Region, str] = None):
+    return PositionalQueues(region=region)
+
+def get_positional_leagues(queue: Queue, tier: Tier, division: Division, position: Position, region: Union[Region, str] = None) -> PositionalLeagues:
+    return PositionalLeagues(region=region, queue=queue, tier=tier, division=division, position=position)
+
+
 def get_master_league(queue: Union[Queue, int, str], region: Union[Region, str] = None) -> MasterLeague:
     return MasterLeague(queue=queue, region=region)
 
+def get_grandmaster_league(queue: Union[Queue, int, str], region: Union[Region, str] = None) -> GrandmasterLeague:
+    return GrandmasterLeague(queue=queue, region=region)
 
 def get_challenger_league(queue: Union[Queue, int, str], region: Union[Region, str] = None) -> ChallengerLeague:
     return ChallengerLeague(queue=queue, region=region)
@@ -84,8 +96,8 @@ def get_champion_mastery(summoner: Summoner, champion: Union[Champion, int, str]
     return ChampionMastery(champion=champion, summoner=summoner, region=region)
 
 
-def get_summoner(*, id: int = None, account: Union[Account, int] = None, name: str = None, region: Union[Region, str] = None) -> Summoner:
-    return Summoner(id=id, account=account, name=name, region=region)
+def get_summoner(*, id: str = None, account_id: str = None, name: str = None, region: Union[Region, str] = None) -> Summoner:
+    return Summoner(id=id, account_id=account_id, name=name, region=region)
 
 
 def get_champion(key: Union[str, int], region: Union[Region, str] = None) -> Champion:
@@ -150,3 +162,13 @@ def get_version(date: datetime.date = None, region: Union[Region, str] = None) -
 
 def get_verification_string(summoner: Summoner) -> VerificationString:
     return VerificationString(summoner=summoner)
+
+
+def get_champion_rotations(region: Union[Region, str] = None) -> ChampionRotation:
+    return ChampionRotation(region=region)
+
+
+# Pipeline
+
+def _get_pipeline():
+    return configuration.settings.pipeline

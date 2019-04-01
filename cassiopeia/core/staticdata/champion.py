@@ -1,12 +1,12 @@
 from typing import Dict, List, Set, Union
-
 from PIL.Image import Image as PILImage
+import arrow
+
 from merakicommons.cache import lazy, lazy_property
 from merakicommons.container import searchable, SearchableList, SearchableDictionary
 
 from ... import configuration
 from ...data import Resource, Region, Platform, GameMode, Key
-from ..champion import ChampionStatusData
 from ..common import CoreData, CassiopeiaObject, CassiopeiaGhost, CassiopeiaLazyList, CoreDataList, get_latest_version, provide_default_region, ghost_load_on
 from .common import ImageData, Image, Sprite
 from .map import Map
@@ -17,6 +17,10 @@ from .item import Item
 ##############
 # Data Types #
 ##############
+
+
+class ChampionReleaseData(CoreData):
+    _renamed = {}
 
 
 class ChampionListData(CoreDataList):
@@ -33,7 +37,7 @@ class LevelTipData(CoreData):
 
 
 class ChampionSpellData(CoreData):
-    _renamed = {"vars": "variables", "maxrank": "maxRank", "cooldown": "cooldowns", "cost": "costs", "effect": "effects", "costType": "resource", "keyboardKey": "keyboard_key"}
+    _renamed = {"vars": "variables", "maxrank": "maxRank", "cooldown": "cooldowns", "cost": "costs", "effect": "effects", "costType": "cost_type", "keyboardKey": "keyboard_key"}
 
     def __call__(self, *args, **kwargs):
         if "leveltip" in kwargs:
@@ -77,7 +81,7 @@ class PassiveData(CoreData):
 
     def __call__(self, **kwargs):
         if "image" in kwargs:
-            self.image = ImageData(**kwargs.pop("image"))
+            self.image = ImageData(version=kwargs["version"], **kwargs.pop("image"))
         super().__call__(**kwargs)
         return self
 
@@ -87,7 +91,7 @@ class SkinData(CoreData):
 
 
 class StatsData(CoreData):
-    _renamed = {"armorperlevel": "armorPerLevel", "hpperlevel": "healthPerLevel", "attackdamage": "attackDamage", "mpperlevel": "manaPerLevel", "attackspeedoffset": "attack_speed_offset", "hp": "health", "hpregenperlevel": "health_regenPerLevel", "attackspeedperlevel": "percent_attack_speedPerLevel", "attackrange": "attack_range", "attackdamageperlevel": "attack_damagePerLevel", "mpregenperlevel": "mana_regenPerLevel", "mp": "mana", "spellblockperlevel": "magicResistPerLevel", "crit": "critical_strike_chance", "mpregen": "manaRegen", "spellblock": "magicResist", "hpregen": "healthRegen", "critperlevel": "criticalStrikeChancePerLevel"}
+    _renamed = {"armorperlevel": "armorPerLevel", "hpperlevel": "healthPerLevel", "attackdamage": "attackDamage", "mpperlevel": "manaPerLevel", "attackspeedoffset": "attackSpeedOffset", "hp": "health", "hpregenperlevel": "healthHegenPerLevel", "attackspeedperlevel": "percentAttackSpeedPerLevel", "attackrange": "attackRange", "attackdamageperlevel": "attackDamagePerLevel", "mpregenperlevel": "manaRegenPerLevel", "mp": "mana", "spellblockperlevel": "magicResistPerLevel", "crit": "criticalStrikeChance", "mpregen": "manaRegen", "spellblock": "magicResist", "hpregen": "healthRegen", "critperlevel": "criticalStrikeChancePerLevel"}
 
 
 class InfoData(CoreData):
@@ -110,9 +114,13 @@ class ChampionData(CoreData):
         if "skins" in kwargs:
             self.skins = [SkinData(**skin) for skin in kwargs.pop("skins")]
         if "passive" in kwargs:
-            self.passive = PassiveData(**kwargs.pop("passive"))
-        if "spells" in kwargs:
             version = kwargs.get("version", get_latest_version(kwargs["region"], endpoint="champion"))
+            self.passive = PassiveData(version=version, **kwargs.pop("passive"))
+        if "spells" in kwargs:
+            try:
+                version
+            except NameError:
+                version = kwargs.get("version", get_latest_version(kwargs["region"], endpoint="champion"))
             self.spells = [ChampionSpellData(version=version, **spell) for spell in kwargs.pop("spells")]
         super().__call__(**kwargs)
         return self
@@ -220,7 +228,7 @@ class ChampionSpell(CassiopeiaObject):
     @property
     def resource(self) -> Resource:
         """The resource consumed when using this spell."""
-        return Resource(self._data[ChampionSpellData].resource)
+        return Resource(self._data[ChampionSpellData].cost_type)
 
     @lazy_property
     def image_info(self) -> Image:
@@ -449,7 +457,7 @@ class Skin(CassiopeiaObject):
     @lazy_property
     def loading_image(self) -> PILImage:
         """The skin's loading screen image."""
-        return configuration.settings.pipeline.get(PILImage, query={"url": self._loading_image_url})
+        return configuration.settings.pipeline.get(PILImage, query={"url": self.loading_image_url})
 
 
 class Stats(CassiopeiaObject):
@@ -560,9 +568,9 @@ class Info(CassiopeiaObject):
         return self._data[InfoData].magic
 
 
-@searchable({str: ["name", "key", "title", "region", "platform", "locale", "tags"], int: ["id"], Region: ["region"], Platform: ["platform"], bool: ["free_to_play"]})
+@searchable({str: ["name", "key", "region", "platform", "locale", "tags"], int: ["id"], Region: ["region"], Platform: ["platform"], bool: ["free_to_play"]})
 class Champion(CassiopeiaGhost):
-    _data_types = {ChampionData, ChampionStatusData}
+    _data_types = (ChampionData, ChampionReleaseData)
 
     @provide_default_region
     def __init__(self, *, id: int = None, name: str = None, key: str = None, region: Union[Region, str] = None, version: str = None, locale: str = None, included_data: Set[str] = None):
@@ -603,7 +611,23 @@ class Champion(CassiopeiaGhost):
         else:
             return self.id == other.id
 
+    def __str__(self):
+        region = self.region
+        id_ = "?"
+        name = "?"
+        if hasattr(self._data[ChampionData], "id"):
+            id_ = self.id
+        if hasattr(self._data[ChampionData], "name"):
+            name = self.name
+        return "Champion(name='{name}', id={id_}, region='{region}')".format(name=name, id_=id_, region=region.value)
+
     __hash__ = CassiopeiaGhost.__hash__
+
+    def load(self, load_groups: Set = None) -> "Champion":
+        return super().load(load_groups=self._data_types)
+
+    def __load__(self, load_group: CoreData = None, load_groups: Set = None) -> None:
+        return super().__load__(load_group=load_group, load_groups=self._data_types)
 
     # What do we do about params like this that can exist in both data objects?
     # They will be set on both data objects always, so we can choose either one to return.
@@ -642,36 +666,6 @@ class Champion(CassiopeiaGhost):
     def id(self) -> int:
         """The champion's ID."""
         return self._data[ChampionData].id
-
-    @CassiopeiaGhost.property(ChampionStatusData)
-    @ghost_load_on
-    def enabled(self) -> bool:
-        """Whether or not the champion is currently enabled."""
-        return self._data[ChampionStatusData].enabled
-
-    @CassiopeiaGhost.property(ChampionStatusData)
-    @ghost_load_on
-    def custom_enabled(self) -> bool:
-        """Whether or not the champion is currently enabled in custom games."""
-        return self._data[ChampionStatusData].customEnabled
-
-    @CassiopeiaGhost.property(ChampionStatusData)
-    @ghost_load_on
-    def coop_ai_enabled(self) -> bool:
-        """Whether or not the champion is currently enabled in coop and AI games."""
-        return self._data[ChampionStatusData].coopAiEnabled
-
-    @CassiopeiaGhost.property(ChampionStatusData)
-    @ghost_load_on
-    def ranked_enabled(self) -> bool:
-        """Whether or not the champion is currently enabled in ranked games."""
-        return self._data[ChampionStatusData].rankedEnabled
-
-    @CassiopeiaGhost.property(ChampionStatusData)
-    @ghost_load_on
-    def free_to_play(self) -> bool:
-        """Whether or not the champion is currently free to play."""
-        return self._data[ChampionStatusData].freeToPlay
 
     @CassiopeiaGhost.property(ChampionData)
     @ghost_load_on
@@ -790,3 +784,34 @@ class Champion(CassiopeiaGhost):
     @lazy_property
     def sprite(self) -> Sprite:
         return self.image.spriteInfo
+
+    @lazy_property
+    def free_to_play(self) -> bool:
+        """Whether or not the champion is currently free to play."""
+        from ..champion import ChampionRotation
+        rotation = ChampionRotation(region=self.region)
+        for champ in rotation.free_champions:
+            if self.id == champ.id:
+                return True
+        else:
+            return False
+
+    @lazy_property
+    def free_to_play_new_players(self) -> bool:
+        """Whether or not the champion is currently free to play for new players."""
+        from ..champion import ChampionRotation
+        rotation = ChampionRotation(region=self.region)
+        for champ in rotation.free_champions_for_new_players:
+            if self.id == champ.id:
+                return True
+        for champ in rotation.free_champions:
+            if self.id == champ.id:
+                return True
+        else:
+            return False
+
+    @CassiopeiaGhost.property(ChampionReleaseData)
+    @ghost_load_on
+    @lazy
+    def release_date(self) -> arrow.Arrow:
+        return arrow.get(self._data[ChampionReleaseData].releaseDate)

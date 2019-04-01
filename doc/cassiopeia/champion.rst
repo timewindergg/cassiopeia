@@ -1,3 +1,6 @@
+.. _Champions:
+
+
 Champions
 =========
 
@@ -13,13 +16,7 @@ Champions
     :show-inheritance:
     :inherited-members:
 
-
 .. autoclass:: Champion
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-.. autoclass:: cassiopeia.plugins.championgg.core.ChampionGGStats
     :members:
     :undoc-members:
     :show-inheritance:
@@ -64,3 +61,22 @@ Champions
     :undoc-members:
     :show-inheritance:
 
+.. autoclass:: cassiopeia_championgg.core.ChampionGGStats
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+.. autoclass:: cassiopeia_championgg.core.ChampionGGMatchups
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+.. autoclass:: cassiopeia_championgg.core.ChampionGGMatchup
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+.. autoclass:: cassiopeia_championgg.core.ChampionGGMatchupStats
+    :members:
+    :undoc-members:
+    :show-inheritance:

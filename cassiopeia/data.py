@@ -23,6 +23,13 @@ class Region(Enum):
     def default_locale(self) -> str:
         return DEFAULT_LOCALE[self]
 
+    @staticmethod
+    def from_platform(platform):
+        try:
+            return platform.region
+        except AttributeError:
+            return Platform(platform).region
+
     @property
     def timezone(self) -> str:
         tzs = {
@@ -61,6 +68,13 @@ class Platform(Enum):
     @property
     def default_locale(self) -> str:
         return DEFAULT_LOCALE[self]
+
+    @staticmethod
+    def from_region(region):
+        try:
+            return region.platform
+        except AttributeError:
+            return Region(region).platform
 
 
 DEFAULT_LOCALE = {
@@ -126,6 +140,9 @@ class GameMode(Enum):
     dominion = "ODIN"
     one_for_all = "ONEFORALL"
     tutorial = "TUTORIAL"
+    tutorial_1 = "TUTORIAL_MODULE_1"
+    tutorial_2 = "TUTORIAL_MODULE_2"
+    tutorial_3 = "TUTORIAL_MODULE_3"
     nexus_siege = "SIEGE"
     assassinate = "ASSASSINATE"
     dark_star = "DARKSTAR"
@@ -136,6 +153,9 @@ class GameMode(Enum):
     project = "PROJECT"
     overcharge = "OVERCHARGE"
     all_random_urf_snow = "SNOWURF"
+    practice_tool = "PRACTICETOOL"
+    nexus_blitz = "GAMEMODEX"
+    odyssey = "ODYSSEY"
 
 
 class MasteryTree(Enum):
@@ -144,22 +164,16 @@ class MasteryTree(Enum):
     resolve = "Resolve"
 
 
-class RunePath(Enum):
-    precision = "Precision"
-    domination = "Domination"
-    sorcery = "Sorcery"
-    inspiration = "Inspiration"
-    resolve = "Resolve"
-
-
 class Tier(Enum):
     challenger = "CHALLENGER"
+    grandmaster = "GRANDMASTER"
     master = "MASTER"
     diamond = "DIAMOND"
     platinum = "PLATINUM"
     gold = "GOLD"
     silver = "SILVER"
     bronze = "BRONZE"
+    iron = "IRON"
     unranked = "UNRANKED"
 
     def __str__(self):
@@ -167,8 +181,9 @@ class Tier(Enum):
 
     @staticmethod
     def _order():
-        return {Tier.challenger: 7, Tier.master: 6, Tier.diamond: 5,
-                Tier.platinum: 4, Tier.gold: 3, Tier.silver: 2, Tier.bronze: 1}
+        return {Tier.challenger: 9, Tier.grandmaster: 8, Tier.master: 7,
+                Tier.diamond: 6, Tier.platinum: 5, Tier.gold: 4,
+                Tier.silver: 3, Tier.bronze: 2, Tier.iron: 1}
 
     def __lt__(self, other):
         return self._order()[self] < other._order()[other]
@@ -188,14 +203,13 @@ class Division(Enum):
     two = "II"
     three = "III"
     four = "IV"
-    five = "V"
 
     def __str__(self):
         return self.value
 
     @staticmethod
     def _order():
-        return {Division.one: 5, Division.two: 4, Division.three: 3, Division.four: 2, Division.five: 1}
+        return {Division.one: 4, Division.two: 3, Division.three: 2, Division.four: 1}
 
     def __lt__(self, other):
         return self._order()[self] < other._order()[other]
@@ -251,6 +265,8 @@ class Season(Enum):
     season_7 = "SEASON2017"
     preseason_8 = "PRESEASON2018"
     season_8 = "SEASON2018"
+    preseason_9 = "PRESEASON2019"
+    season_9 = "SEASON2019"
 
     @property
     def id(self):
@@ -286,7 +302,9 @@ SEASON_IDS = {
     Season.preseason_7: 8,
     Season.season_7: 9,
     Season.preseason_8: 10,
-    Season.season_8: 11
+    Season.season_8: 11,
+    Season.preseason_9: 12,
+    Season.season_9: 13
 }
 
 
@@ -306,6 +324,7 @@ class Lane(Enum):
         return {
             "BOTTOM": Lane.bot_lane,
             "MIDDLE": Lane.mid_lane,
+            "MID": Lane.mid_lane,
             "TOP": Lane.top_lane,
             "JUNGLE": Lane.jungle,
             "NONE": None
@@ -313,17 +332,139 @@ class Lane(Enum):
 
 
 class Role(Enum):
-    top = "TOP"
-    jungle = "JUNGLE"
-    middle = "MIDDLE"
-    adc = "DUO_CARRY"
-    support = "DUO_SUPPORT"
+    duo = "DUO"
+    duo_carry = "DUO_CARRY"
+    duo_support = "DUO_SUPPORT"
+    none = "NONE"
+    solo = "SOLO"
 
     def from_match_naming_scheme(string: str):
         return {
-            "DUO_CARRY": Role.adc,
-            "DUO_SUPPORT": Role.support
+            "DUO": Role.duo,
+            "DUO_CARRY": Role.duo_carry,
+            "DUO_SUPPORT": Role.duo_support,
+            "NONE": Role.none,
+            "SOLO": Role.solo
         }[string]
+
+
+class Position(Enum):
+    top = "TOP"
+    middle = "MIDDLE"
+    jungle = "JUNGLE"
+    bottom = "BOTTOM"
+    utility = "UTILITY"
+    apex = "APEX"
+    none = "NONE"
+
+    def from_league_naming_scheme(string: str):
+        return {
+            "TOP": Position.top,
+            "MIDDLE": Position.middle,
+            "JUNGLE": Position.jungle,
+            "BOTTOM": Position.bottom,
+            "UTILITY": Position.support,
+            "NONE": Position.none
+        }
+
+
+class SummonersRiftArea(Enum):
+    none = "NONE"
+    nexus_blue = "NEXUS_BLUE"
+    nexus_red = "NEXUS_RED"
+    top_lane_blue = "TOP_LANE_BLUE"
+    top_lane_purple = "TOP_LANE_PURPLE"
+    top_lane_red = "TOP_LANE_RED"
+    mid_lane_blue = "MID_LANE_BLUE"
+    mid_lane_purple = "MID_LANE_PURPLE"
+    mid_lane_red = "MID_LANE_RED"
+    bot_lane_blue = "BOT_LANE_BLUE"
+    bot_lane_purple = "BOT_LANE_PURPLE"
+    bot_lane_red = "BOT_LANE_RED"
+    jungle_top_blue = "JUNGLE_TOP_BLUE"
+    jungle_top_red = "JUNGLE_TOP_RED"
+    jungle_bot_blue = "JUNGLE_BOT_BLUE"
+    jungle_bot_red = "JUNGLE_BOT_RED"
+    river_top = "RIVER_TOP"
+    river_bot = "RIVER_BOT"
+
+    def get_side(self) -> Side:
+        if "BLUE" in self.value:
+            return Side.blue
+        elif "RED" in self.value:
+            return Side.red
+        else:
+            return None
+
+    def get_lane(self) -> Lane:
+        if "TOP" in self.value:
+            return Lane.top_lane
+        elif "MID" in self.value:
+            return Lane.mid_lane
+        elif "BOT" in self.value:
+            return Lane.bot_lane
+        elif "JUNGLE" in self.value:
+            return Lane.jungle
+        else:
+            return None
+
+    @staticmethod
+    def from_position(position: "Position") -> "SummonersRiftArea":
+        from .core.match import Position
+        x, y = position.x, position.y
+
+        # Load the map if it isn't already loaded
+        try:
+            map = SummonersRiftArea.__map
+        except AttributeError:
+            import os
+            from PIL import Image
+            script_dir = os.path.dirname(__file__)
+            rel_path = './resources/summonersRiftAreas.png'
+            map = Image.open(os.path.join(script_dir, rel_path))
+            SummonersRiftArea.__map_size = map.size
+            map = map.load()
+            SummonersRiftArea.__map = map
+        image_width, image_height = SummonersRiftArea.__map_size
+
+        min_x = -120
+        min_y = -120
+        max_x = 14870
+        max_y = 14980
+        width = max_x - min_x
+        height = max_y - min_y
+        x = round((x - min_x) / width * (image_width - 1))
+        y = round(abs(y - min_y - height) / height * (image_height - 1))
+        rgb = map[x, y][0]
+
+        color_mapping = {
+            0: SummonersRiftArea.none,
+            10: SummonersRiftArea.nexus_blue,
+            20: SummonersRiftArea.nexus_red,
+            30: SummonersRiftArea.top_lane_blue,
+            40: SummonersRiftArea.top_lane_purple,
+            50: SummonersRiftArea.top_lane_red,
+            60: SummonersRiftArea.mid_lane_blue,
+            70: SummonersRiftArea.mid_lane_purple,
+            80: SummonersRiftArea.mid_lane_red,
+            90: SummonersRiftArea.bot_lane_blue,
+            100: SummonersRiftArea.bot_lane_purple,
+            110: SummonersRiftArea.bot_lane_red,
+            120: SummonersRiftArea.jungle_top_blue,
+            130: SummonersRiftArea.jungle_top_red,
+            140: SummonersRiftArea.jungle_bot_blue,
+            150: SummonersRiftArea.jungle_bot_red,
+            160: SummonersRiftArea.river_top,
+            170: SummonersRiftArea.river_bot
+        }
+        return color_mapping.get(rgb, SummonersRiftArea.none)
+
+
+class Tower(Enum):
+    OUTER = "OUTER_TURRET"
+    INNER = "INNER_TURRET"
+    BASE  = "BASE_TURRET"
+    NEXUS = "NEXUS_TURRET"
 
 
 # References for Queues:
@@ -369,7 +510,7 @@ class Queue(Enum):
     black_market_brawlers = "BILGEWATER_5x5"  # 313
     deprecated_nexus_siege = "SIEGE"  # 315
     definitely_not_dominion = "DEFINITELY_NOT_DOMINION_5x5"  # 317
-    all_random_urf = "ARURF_5X5"  # 318
+    deprecated_all_random_urf = "ARURF_5X5"  # 318
     all_random_summoners_rift = "ARSR_5x5"  # 325
     normal_draft_fives = "TEAM_BUILDER_DRAFT_UNRANKED_5x5"  # 400
     deprecated_ranked_fives = "TEAM_BUILDER_DRAFT_RANKED_5x5"  # 410
@@ -385,12 +526,14 @@ class Queue(Enum):
     blood_hunt_assassin = "ASSASSINATE_5x5"  # 600
     dark_star = "DARKSTAR_3x3"  # 610
     ranked_flex_threes = "RANKED_FLEX_TT"  # 470
+    clash = "CLASH"  # 700
     coop_ai_intermediate_threes = "BOT_3X3_INTERMEDIATE"  # 800
     coop_ai_intro_threes = "BOT_3X3_INTRO"  # 810
     coop_ai_beginner_threes = "BOT_3X3_BEGINNER"  # 820
     coop_ai_intro_fives = "BOT_5X5_INTRO"  # 830
     coop_ai_beginner_fives = "BOT_5X5_BEGINNER"  # 840
     coop_ai_intermediate_fives = "BOT_5X5_INTERMEDIATE"  # 850
+    all_random_urf = "ARURF_5X5"  # 900
     project = "PROJECT"  # 910
     poro_king = "KINGPORO"  # 920
     nexus_siege = "NEXUS_SIEGE"  # 940
@@ -401,6 +544,12 @@ class Queue(Enum):
     overcharge = "OVERCHARGE"  # 1000
     all_random_urf_snow = "SNOWURF"  # 1010
     one_for_all_rapid = "ONEFORALL_RAPID_5x5" # 1020
+    odyssey_intro = "ODYSSEY_INTRO"  # 1030
+    odyssey_cadet = "ODYSSEY_CADET"  # 1040
+    odyssey_crewmember = "ODYSSEY_CREWMEMBER"  # 1050
+    odyssey_captain = "ODYSSEY_CAPTAIN"  # 1060
+    odyssey_onslaught = "ODYSSEY_ONSLAUGHT"  # 1070
+    nexus_blitz = "NEXUS_BLITZ"  # 1200
 
     def from_id(id: int):
         return {i: season for season, i in QUEUE_IDS.items()}[id]
@@ -448,7 +597,7 @@ QUEUE_IDS = {
     Queue.black_market_brawlers: 313,  # Summoner's Rift    Black Market Brawlers games
     Queue.deprecated_nexus_siege: 315,  # Summoner's Rift    Nexus Siege games    Deprecated in patch 7.19 in favor of queueId 940
     Queue.definitely_not_dominion: 317,  # Crystal Scar    Definitely Not Dominion games
-    Queue.all_random_urf: 318,  # Summoner's Rift    All Random URF games
+    Queue.deprecated_all_random_urf: 318,  # Summoner's Rift    All Random URF games      Game mode deprecated in patch 8.10 in favor is queueId 900
     Queue.all_random_summoners_rift: 325,  # Summoner's Rift    All Random games
     Queue.normal_draft_fives: 400,  # Summoner's Rift    5v5 Draft Pick games
     Queue.deprecated_ranked_fives: 410,  # Summoner's Rift    5v5 Ranked Dynamic games    Game mode deprecated in patch 6.22
@@ -460,12 +609,14 @@ QUEUE_IDS = {
     Queue.ranked_flex_threes: 470,  # Twisted Treeline    3v3 Ranked Flex games
     Queue.blood_hunt_assassin: 600,  # Summoner's Rift    Blood Hunt Assassin games
     Queue.dark_star: 610,  # Cosmic Ruins    Dark Star games
+    Queue.clash: 700,  # Summoner's Rift    Clash games
     Queue.coop_ai_intermediate_threes: 800,  # Twisted Treeline    Co-op vs. AI Intermediate Bot games
     Queue.coop_ai_intro_threes: 810,  # Twisted Treeline    Co-op vs. AI Intro Bot games
     Queue.coop_ai_beginner_threes: 820,  # Twisted Treeline    Co-op vs. AI Beginner Bot games
     Queue.coop_ai_intro_fives: 830,  # Summoner's Rift    Co-op vs. AI Intro Bot games
     Queue.coop_ai_beginner_fives: 840,  # Summoner's Rift    Co-op vs. AI Beginner Bot games
     Queue.coop_ai_intermediate_fives: 850,  # Summoner's Rift    Co-op vs. AI Intermediate Bot games
+    Queue.all_random_urf: 900,  # Summoner's Rift    All Random URF games
     Queue.project: 910,
     Queue.poro_king: 920,  # Howling Abyss    Legend of the Poro King
     Queue.nexus_siege: 940,  # Summoner's Rift    Nexus Siege games
@@ -476,6 +627,12 @@ QUEUE_IDS = {
     Queue.overcharge: 1000,  # Overcharge, PROJECT: Hunters games
     Queue.all_random_urf_snow: 1010,  # Summoner's Rift, Snow ARURF games
     Queue.one_for_all_rapid: 1020, # Summoner's Rift  One for All games (increased gold and exp gain)
+    Queue.odyssey_intro: 1030,  # Odyssey: Extraction
+    Queue.odyssey_cadet: 1040,  # Odyssey: Extraction
+    Queue.odyssey_crewmember: 1050,  # Odyssey: Extraction
+    Queue.odyssey_captain: 1060,  # Odyssey: Extraction
+    Queue.odyssey_onslaught: 1070,  # Odyssey: Extraction
+    Queue.nexus_blitz: 1200,  # Nexus Blitz map    Nexus Blitz
 }
 
 RANKED_QUEUES = {
